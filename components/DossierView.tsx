@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { bandTone, clock, short } from "@/lib/format";
 import type { AiBrief, Dossier } from "@/lib/types";
 import { BriefPanel, memoFromLedger, ReceiptCard, receiptError, STEP_DEFS, StepList, stepsFromDossier, useMock, type ReceiptUi, type Step } from "./DossierParts";
+import LivePrice from "./LivePrice";
 import { useWatchlist } from "./useWatchlist";
 
 export type LedgerReceipt = { mint: string; score: number; band: string; confidence: number; hash16: string; time: number; signature: string; explorerUrl: string; cluster: string; subject?: string; method?: string };
@@ -241,6 +242,7 @@ export default function DossierView({ query }: { query: string }) {
             <small>/ 100 RISK</small>
           </div>
         </div>
+        <LivePrice mint={dossier.mint} />
         <div className="scorebar"><span style={{ width: `${v.band === "Insufficient data" ? 0 : v.score}%` }} /></div>
         <div className="verdict-meta">
           <div><span className="label">BAND</span><strong className={bandTone(v.band)}>{v.band}{v.limitedData && v.band !== "Insufficient data" ? " · limited data" : ""}</strong></div>

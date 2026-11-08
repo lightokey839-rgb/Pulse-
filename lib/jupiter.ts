@@ -94,6 +94,18 @@ export function searchTokens(query: string) {
   return cached(`jup:search:${q.toLowerCase()}`, 30_000, () => jget<JupToken[]>(`/tokens/v2/search?query=${encodeURIComponent(q)}`));
 }
 
+export type JupPrice = { usdPrice: number; priceChange24h?: number; blockId?: number; fetchedAt?: number };
+
+// Live USD price (Jupiter Price v3). A 4s shared cache keeps many viewers within the rate limit.
+export function livePrice(mint: string) {
+  return cached(`jup:price:${mint}`, 4_000, async () => {
+    const r = await jget<Record<string, JupPrice>>(`/price/v3?ids=${mint}`);
+    const p = r[mint];
+    if (!p || typeof p.usdPrice !== "number") throw new JupiterError(404, "no price");
+    return { ...p, fetchedAt: Date.now() };
+  });
+}
+
 export function sellQuote(mint: string, rawAmount: bigint) {
   return cached(`jup:order:${mint}:${rawAmount}`, 60_000, () =>
     jget<JupOrder>(`/swap/v2/order?inputMint=${mint}&outputMint=${USDC_MINT}&amount=${rawAmount.toString()}`),

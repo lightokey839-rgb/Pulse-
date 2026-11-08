@@ -44,6 +44,11 @@ img{max-width:100%}
   .crumb-actions{flex-wrap:wrap}
 }
 
+/* Live price strip */
+.live-price{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;margin-top:16px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#0f1514;transition:background .4s}
+.live-price .price-val{font-size:20px;font-weight:600}
+.live-price.up{background:#15240f}.live-price.down{background:#2a1612}
+
 /* Steps */
 .steps-panel{margin-bottom:16px}
 .steps-list{display:flex;flex-direction:column}
