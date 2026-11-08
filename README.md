@@ -1,46 +1,72 @@
-# Pulse — Memecoin Terminal
+# Pulse — provable verdicts for Solana memecoins
 
-**Check before you sign.** Pulse is an AI launch radar for Solana memecoins. It streams new and trending launches, then builds a dossier for any token from live chain and Jupiter data: authorities, Token-2022 extensions, holders, a live Exit Ladder, and the creator's launch history. An AI explains the verdict, and every AI claim is machine-checked against the evidence before it is shown.
+**Check before you sign.** Pulse catches memecoins minutes after launch, reads what the chain says about them, measures what a sell would really return, and anchors every verdict on Solana so anyone can verify it was never rewritten.
 
-## 60-second summary
+Built for the **MLH Solana Hackathon (Nov 6–8, 2026)**. Live: **https://pulse-light-af8c.vercel.app** · License: MIT
 
-1. **Radar.** New launches (Jupiter `tokens/v2/recent`) and 1h trending, refreshed while the page is open. Each row shows quick flags such as *Creator: 852 launches* or *Mint active*.
-2. **Dossier.** Click a token. Pulse reads the mint on chain (`getAccountInfo` jsonParsed), resolves top holders to owners (`getTokenLargestAccounts` + `getMultipleAccounts`), and quotes real sells of $100, $1k and $10k into USDC (Jupiter `swap/v2/order`, quote only).
-3. **Verdict.** A deterministic, weighted risk score with confidence, coverage, and critical flags that can't be averaged away: active mint or freeze authority, a dangerous Token-2022 extension, no sell route, or a serial launcher.
-4. **AI brief.** Generated only from the evidence ledger. A verifier drops any finding that cites no evidence, cites a missing ID, contains a number not in its cited evidence, or uses advice or reassurance wording. With no LLM key, a rule-based explanation is shown and labelled as such.
-5. **Evidence.** Every fact has an ID (E1…E12), a source and a method. The SHA-256 evidence hash covers values, not timestamps, so the same chain state gives the same hash. The bundle downloads as JSON.
-6. **Trade.** "Open in Jupiter" opens Jupiter's swap page. The user trades and signs there; Pulse never holds funds or executes swaps.
+## 60-second tour
 
-## How Solana is used
-- Mint authority, freeze authority and Token-2022 extensions are read directly from chain, and chain data wins when Jupiter disagrees.
-- Holder concentration is computed by resolving token accounts to owners and excluding program-owned accounts such as pools and curves (heuristic, labelled).
-- Exit liquidity is measured with live Jupiter routes across Solana DEXs.
+1. **Home / New launches.** Live feed of tokens minted minutes ago (pump.fun, Meteora, LaunchLab, bags.fun). Stats show how many come from serial launchers.
+2. **Open any token.** Pulse reads mint and freeze authority and Token-2022 extensions straight from Solana, quotes real $100 / $1k / $10k sells through Jupiter, and checks the creator's launch history.
+3. **Verdict.** A deterministic 10-factor score with confidence, coverage and critical flags that can't be averaged away.
+4. **AI brief.** Written only from the evidence ledger; a verifier deletes any claim that cites nothing, invents a number, or gives advice.
+5. **Anchor on Solana.** One click writes a Memo-program receipt with the score, band, method version and evidence hash.
+6. **Ledger → Verify.** Receipts are read back from chain (no database). Verify recomputes the hash in your browser: ✓ MATCH, or ✕ MISMATCH if one evidence field changed.
+
+## What Solana does here (not bolted on)
+
+- **Public account state is the evidence.** Authorities, extensions and holder ownership come from RPC reads of the mint and token accounts; the chain wins when third-party data disagrees.
+- **Cheap, fast, public receipts.** Each verdict is a Memo transaction (~5,000 lamports, confirmed in seconds) that anyone can read with `getSignaturesForAddress` and check against the evidence. Receipts prove what Pulse said and when, not that it was right.
+- **Composability.** The Exit Ladder is built from live Jupiter routes across Solana DEXs; trades hand off to Jupiter for the user to sign.
+
+Receipt format (under 300 bytes):
+```
+pulse/1 c=devnet n=mainnet v=pulse-risk/2 m=<mint> s=<score> b=<L|M|E|H|I> k=<confidence> h=<first 16 hex of SHA-256> t=<unix>
+```
+`c` = receipt cluster, `n` = the token's cluster. The server never anchors client-supplied scores: verdicts are HMAC-sealed when computed and re-checked before writing. Writes are idempotent per mint + hash (checked on chain) and rate-limited.
 
 ## How AI is used
-- Model: `claude-haiku-5-5` by default (`LLM_MODEL`), with JSON output validated by a Zod schema.
-- Token name and symbol are untrusted: they're sanitised, delimited, and the model is told to treat them as data.
-- The claim verifier is in `lib/ai.ts` and tested in `lib/ai.test.ts`, including invented numbers, uncited claims, forbidden wording and a prompt-injection case. A failed check triggers one repair retry, then falls back to the rule-based explanation.
+
+- `claude-haiku-5-5` (configurable) writes the brief as Zod-validated JSON from the evidence ledger only. Token names are treated as untrusted input.
+- The claim verifier (`lib/ai.ts`) checks every finding cites existing evidence IDs, every number appears in the cited evidence, and no advice or reassurance wording appears. One repair retry, then a labelled rule-based fallback.
+- Tests cover invented numbers, uncited claims, forbidden wording and a prompt-injection case.
+
+## Live vs simulated
+
+| Part | Status |
+|---|---|
+| Launch and trending feeds, ticker | LIVE (Jupiter Tokens v2) |
+| Authorities, Token-2022 extensions | LIVE (Solana mainnet RPC) |
+| Holder concentration | LIVE with a keyed RPC; otherwise Jupiter's figure, labelled |
+| Exit Ladder | LIVE Jupiter quotes; bonding-curve tokens shown as "curve only" |
+| Creator launch history | LIVE (Jupiter audit data) |
+| AI brief | LIVE with `ANTHROPIC_API_KEY`; otherwise labelled rule-based |
+| Receipts and Ledger | LIVE on Solana **devnet** (mainnet supported via `ATTEST_CLUSTER`) |
+| Ask bar | Keyword matching, labelled "Keyword" (no LLM) |
+| Nothing is mocked or pre-recorded. | |
 
 ## Run locally (PowerShell)
 
 ```powershell
-cd C:\Users\HomePC\Documents\Codex\2026-11-07\sta\work\pulse
 npm install
-Copy-Item .env.example .env.local   # then fill in keys (optional)
+node scripts/attestor.mjs new      # creates a devnet attestor key in .env.local (gitignored)
+# fund the printed address at https://faucet.solana.com
 npm run dev
 ```
+Checks: `npm run typecheck`, `npm test` (21 tests), `npm run build`. Health: `GET /api/health`. Env vars: see `.env.example`.
 
-Checks: `npm run typecheck`, `npm test`, `npm run build`. Health: `GET /api/health`.
+## Roadmap (what the microgrant would fund)
 
-## Deploy (Vercel)
-Import the GitHub repo in Vercel (framework: Next.js, no build settings needed), add the env vars from `.env.example`, and deploy. Everything works without keys, just slower and with a rule-based brief.
+1. **Mainnet attestation.** Move receipts to mainnet and adopt Solana Attestation Service schemas so other apps can read Pulse verdicts natively.
+2. **Public Verify API + SDK.** `GET /api/v1/verdict/{mint}` returning verdict, evidence and receipt, plus a small client so wallets and bots can run a pre-trade check.
+3. **Agent-readable endpoint and alerts.** A machine-readable pre-sign check for AI trading agents, and live alerts on watched tokens (authority changes, liquidity pulls, creator selling).
+
+**What $1,000 would fund:** keyed RPC and LLM costs for a public beta (~3 months), mainnet attestation fees, and hardening (shared cache, monitoring, rate-limit tuning) so Pulse stays up for real traders.
 
 ## Limitations
-- Tokens still on a launchpad bonding curve can't be routed by Jupiter, so their exit depth shows "curve only" (heuristic) and isn't scored.
-- Creator history comes from Jupiter's `devMints` / `devMigrations`. Deployers with 20,000+ launches are treated as launchpad signers and not scored.
-- Owner classification is heuristic. Jupiter data is third-party. Quotes are point-in-time.
-- The radar refreshes only while the page is open; there is no background monitoring.
-- A lower score means fewer warning signs were found, not that a token is protected from loss. Not financial advice.
 
-## Roadmap
-v2: creator wallet forensics (bundled launch buys, prior rugs), natural-language search, on-chain Memo receipts with a Ledger page, in-app wallet swap, watch alerts. v3: launchpad stream with graduation alerts, a public AI scorecard of 24h outcomes, agent API. See `Pulse Terminal — Build Spec.md`.
+Holder owner classification is heuristic. Jupiter data is third-party and quotes are point-in-time. Tokens still on a bonding curve can't be routed by Jupiter yet, so their exit depth isn't scored. Pulse runs while open (no background monitoring). A low score means fewer warning signs, not protection. **Not financial advice.**
+
+## Event work disclosure
+
+All code in this repository was written during the event; the first commit is Nov 7, 2026 and the full history is public. The idea and a static UI mockup existed before the event.

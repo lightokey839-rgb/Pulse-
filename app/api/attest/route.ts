@@ -1,5 +1,7 @@
 import { AttestError, writeReceipt } from "@/lib/attest";
-import { clientIp, rateLimited } from "@/lib/cache";
+import { attestCluster, attestorAddress, attestRpc, explorerTx } from "@/lib/attest-config";
+import { cached, clientIp, rateLimited } from "@/lib/cache";
+import { parseReceiptMemo } from "@/lib/receipt";
 import { buildDossier, resolveToken } from "@/lib/dossier";
 import type { Band } from "@/lib/types";
 import { checkSeal } from "@/lib/verdict-seal";
@@ -43,6 +45,27 @@ export async function POST(request: Request) {
     if (d.evidenceHash !== hash) note = "Chain or market data changed since you loaded this page, so the receipt anchors the fresh verdict.";
     const again = receiptFor(verdict.hash);
     if (again) return Response.json({ ...again, evidenceHash: verdict.hash, reused: true, note });
+  }
+
+  // Idempotent across server instances: if this mint + evidence hash is already on chain, reuse it.
+  try {
+    const address = attestorAddress();
+    if (address) {
+      const { value: sigs } = await cached(`ledger:${attestCluster()}:${address}`, 8_000, () =>
+        attestRpc<{ signature: string; err: unknown; memo: string | null }[]>("getSignaturesForAddress", [address, { limit: 100, commitment: "confirmed" }]),
+      );
+      const hit = sigs.find((s) => {
+        const p = !s.err ? parseReceiptMemo(s.memo) : null;
+        return p && p.mint === verdict!.mint && p.hash16 === verdict!.hash.slice(0, 16);
+      });
+      if (hit?.memo) {
+        const reused = { signature: hit.signature, memo: hit.memo.replace(/^\[\d+\]\s*/, ""), explorerUrl: explorerTx(hit.signature), cluster: attestCluster(), status: "confirmed" };
+        rememberReceipt(verdict.hash, reused);
+        return Response.json({ ...reused, evidenceHash: verdict.hash, reused: true, note });
+      }
+    }
+  } catch {
+    /* ledger read failed: fall through and write */
   }
 
   try {

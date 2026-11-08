@@ -65,12 +65,13 @@ async function throttle() {
 }
 
 async function jget<T>(path: string): Promise<T> {
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 900 * attempt + Math.random() * 400));
     await throttle();
     const headers: Record<string, string> = { accept: "application/json" };
     if (process.env.JUPITER_API_KEY) headers["x-api-key"] = process.env.JUPITER_API_KEY;
     const res = await fetch(BASE + path, { headers, signal: AbortSignal.timeout(9000), cache: "no-store" });
-    if (res.status === 429 && attempt === 0) continue;
+    if (res.status === 429 && attempt < 2) continue;
     const text = await res.text();
     if (!res.ok) throw new JupiterError(res.status, text);
     return JSON.parse(text) as T;

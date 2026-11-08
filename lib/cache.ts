@@ -1,16 +1,30 @@
 // Best-effort in-memory cache. Serverless instances may not share it; it only saves calls.
+// - Concurrent requests for the same key share one load (coalescing).
+// - If a refresh fails, the last good value is served for up to STALE_MS and marked stale.
 const store = new Map<string, { expires: number; value: unknown }>();
+const inflight = new Map<string, Promise<unknown>>();
+const STALE_MS = 10 * 60_000;
 
-export async function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<{ value: T; hit: boolean }> {
+export async function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<{ value: T; hit: boolean; stale?: boolean }> {
   const now = Date.now();
   const entry = store.get(key);
   if (entry && entry.expires > now) return { value: entry.value as T, hit: true };
-  const value = await load();
-  store.set(key, { expires: now + ttlMs, value });
-  if (store.size > 500) {
-    for (const [k, v] of store) if (v.expires <= now) store.delete(k);
+  let pending = inflight.get(key) as Promise<T> | undefined;
+  if (!pending) {
+    pending = load().finally(() => inflight.delete(key));
+    inflight.set(key, pending);
   }
-  return { value, hit: false };
+  try {
+    const value = await pending;
+    store.set(key, { expires: Date.now() + ttlMs, value });
+    if (store.size > 500) {
+      for (const [k, v] of store) if (v.expires + STALE_MS <= now) store.delete(k);
+    }
+    return { value, hit: false };
+  } catch (err) {
+    if (entry && entry.expires + STALE_MS > now) return { value: entry.value as T, hit: true, stale: true };
+    throw err;
+  }
 }
 
 // Simple fixed-window limiter per key (usually client IP).

@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { formatReceipt, parseReceiptMemo } from "./receipt";
 import { canonicalEvidence, sha256Hex } from "./canonical";
 
-const r = { cluster: "devnet", mint: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263", score: 6, band: "Low signals" as const, confidence: 0.78, hash16: "1cde6c943ebfa38e", time: 1794100000 };
+const r = { cluster: "devnet", subject: "mainnet", method: "pulse-risk/2", mint: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263", score: 6, band: "Low signals" as const, confidence: 0.78, hash16: "1cde6c943ebfa38e", time: 1794100000 };
 
 test("receipt memo round-trips through the RPC memo format", () => {
   const memo = formatReceipt(r);
