@@ -122,12 +122,43 @@ function userPrompt(evidence: Evidence[], verdict: Verdict, meta: { name: string
     .join("\n\n");
 }
 
-export const aiEnabled = () => Boolean(process.env.ANTHROPIC_API_KEY) && process.env.AI_ENABLED !== "false";
+// Two providers: Anthropic (ANTHROPIC_API_KEY), or any OpenAI-compatible API such as Groq or
+// Gemini (LLM_BASE_URL + LLM_API_KEY + LLM_MODEL). The claim verifier is the same for both.
+const compatible = () => Boolean(process.env.LLM_BASE_URL && process.env.LLM_API_KEY && process.env.LLM_MODEL);
+export const aiEnabled = () => (Boolean(process.env.ANTHROPIC_API_KEY) || compatible()) && process.env.AI_ENABLED !== "false";
 export const aiModel = () => process.env.LLM_MODEL || "claude-haiku-5-5";
 
 let client: Anthropic | null = null;
 
+const JSON_SHAPE = `
+Reply with one JSON object only, no prose, exactly this shape:
+{"summary": string, "findings": [{"severity": "high"|"medium"|"low", "headline": string, "explanation": string, "evidenceIds": [string]}], "unknowns": [string], "beginnerNote": string}`;
+
+async function callCompatible(evidence: Evidence[], verdict: Verdict, meta: { name: string; symbol: string }, errors?: string[]): Promise<RawBrief | null> {
+  const base = process.env.LLM_BASE_URL!.replace(/\/+$/, "");
+  const res = await fetch(`${base}/chat/completions`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${process.env.LLM_API_KEY}` },
+    body: JSON.stringify({
+      model: process.env.LLM_MODEL,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: SYSTEM + JSON_SHAPE },
+        { role: "user", content: userPrompt(evidence, verdict, meta, errors) },
+      ],
+    }),
+    signal: AbortSignal.timeout(25_000),
+  });
+  if (!res.ok) throw new Error(`LLM HTTP ${res.status}`);
+  const body = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+  const text = body.choices?.[0]?.message?.content ?? "";
+  const json = text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
+  const parsed = BriefSchema.safeParse(JSON.parse(json || "null"));
+  return parsed.success ? parsed.data : null;
+}
+
 async function callModel(evidence: Evidence[], verdict: Verdict, meta: { name: string; symbol: string }, errors?: string[]): Promise<RawBrief | null> {
+  if (!process.env.ANTHROPIC_API_KEY && compatible()) return callCompatible(evidence, verdict, meta, errors);
   client ??= new Anthropic();
   const response = await client.messages.parse(
     {
