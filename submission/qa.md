@@ -13,7 +13,7 @@ The evidence is public Solana account state, receipts cost about 5,000 lamports 
 No. Pulse shows risk signals and evidence and never says buy, sell or hold. A low score means fewer warning signs, not safety.
 
 **What's live versus recorded?**
-Everything is live: feeds, RPC reads, quotes and receipts. Receipts are on devnet for the demo; mainnet is one setting. Without an AI key the brief is labelled rule-based.
+Everything is live: feeds, RPC reads, quotes and receipts. Receipts are written to Solana mainnet. Without an AI key the brief is labelled rule-based.
 
 **Can someone fake a receipt?**
 Only the attestor wallet's history counts, and Pulse never anchors scores sent by the browser — verdicts are sealed server-side when computed. Receipts prove what Pulse said and when, not that it was right.

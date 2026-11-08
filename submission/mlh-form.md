@@ -17,7 +17,7 @@ In the two days before this hackathon I lost a little over $25 on Solana memecoi
 Most new memecoins come from repeat deployers — in our feed, roughly 4 in 10 recent launches came from creators with 50+ prior tokens. During testing, Pulse caught a token that collapsed from about $3K to $61 in minutes: no sell route, creator with 2,469 launches. Free scanners give a score; Pulse gives evidence, a measured exit, and a verdict that can't be quietly rewritten.
 
 ## How we built it
-Next.js on Vercel. Solana RPC reads (getAccountInfo jsonParsed, getTokenLargestAccounts, getMultipleAccounts). Jupiter Tokens v2, Price and Swap v2 (quote-only). @solana/kit + @solana-program/memo for receipts; getSignaturesForAddress to read them back. Claude (claude-haiku-5-5) with Zod-validated JSON and a claim verifier. SHA-256 over canonical JSON; HMAC-sealed verdicts so the server never anchors client-supplied scores. 21 automated tests.
+Next.js on Vercel. Solana RPC reads (getAccountInfo jsonParsed, getTokenLargestAccounts, getMultipleAccounts). Jupiter Tokens v2, Price and Swap v2 (quote-only). @solana/kit + @solana-program/memo for receipts; getSignaturesForAddress to read them back. An LLM (live: openai/gpt-oss-20b on Groq; Anthropic Claude also supported) with Zod-validated JSON and a claim verifier. Receipts are written to Solana mainnet. SHA-256 over canonical JSON; HMAC-sealed verdicts so the server never anchors client-supplied scores. 21 automated tests.
 
 ## Challenges
 Jupiter can't route tokens still on a bonding curve, which first looked like "no exit" for every new launch — we now detect and label "curve only". Copycat tickers ($WIF vs WIF) — resolved by ranking verified, deepest-liquidity matches. Making receipts trustworthy across serverless instances without a database — solved with sealed verdicts and on-chain idempotency checks.
@@ -29,7 +29,7 @@ A live verdict pipeline that caught a real rug as it happened; receipts that ver
 Third-party audit data needs the chain as a referee; "no data" must lower confidence, never the risk score; and on-chain receipts are a cheap way to make AI output accountable.
 
 ## What's next
-Mainnet attestation (Solana Attestation Service), a public Verify API/SDK for wallets and bots, and an agent-readable pre-sign endpoint with live alerts.
+Solana Attestation Service schemas for the mainnet receipts, a public Verify API/SDK for wallets and bots, and an agent-readable pre-sign endpoint with live alerts.
 
 ## Prize tracks
 
@@ -39,4 +39,6 @@ Mainnet attestation (Solana Attestation Service), a public Verify API/SDK for wa
 
 **DeFi Track.** Trading analytics built on composability: live Jupiter sell quotes become an Exit Ladder that shows what a sell would actually return, alongside launch and trending feeds, holder and creator analytics, and a hand-off to Jupiter to trade.
 
-**Technologies:** Solana, @solana/kit, Memo program, Jupiter APIs, Next.js, TypeScript, Vercel, Anthropic Claude, Zod.
+**Technologies:** Solana, @solana/kit, Memo program, Jupiter APIs, Helius, Next.js, TypeScript, Vercel, Groq (gpt-oss-20b), Zod.
+
+**AI coding tools:** Claude Code (Claude Opus 5.5) and OpenAI Codex.
