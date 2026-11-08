@@ -59,7 +59,11 @@ export default function DossierView({ query }: { query: string }) {
     setAnchoring(true);
     setAnchorError("");
     try {
-      const res = await fetch("/api/attest", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mint: dossier.mint, evidenceHash: dossier.evidenceHash }) });
+      const res = await fetch("/api/attest", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
+          mint: dossier.mint,
+          evidenceHash: dossier.evidenceHash,
+          sealed: dossier.seal ? { score: dossier.verdict.score, band: dossier.verdict.band, confidence: dossier.verdict.confidence, issuedAt: dossier.seal.issuedAt, seal: dossier.seal.value } : undefined,
+        }) });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "Receipt unavailable");
       setReceipt(body);

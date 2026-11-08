@@ -97,4 +97,5 @@ export type Dossier = {
   ladder: LadderRung[];
   trace: { step: string; source: string; ms: number; status: "ok" | "unavailable" }[];
   jupiterUrl: string;
+  seal?: { value: string; issuedAt: number };
 };

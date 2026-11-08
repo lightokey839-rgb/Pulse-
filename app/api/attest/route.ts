@@ -1,6 +1,8 @@
 import { AttestError, writeReceipt } from "@/lib/attest";
 import { clientIp, rateLimited } from "@/lib/cache";
 import { buildDossier, resolveToken } from "@/lib/dossier";
+import type { Band } from "@/lib/types";
+import { checkSeal } from "@/lib/verdict-seal";
 import { recallVerdict, receiptFor, rememberReceipt, rememberVerdict } from "@/lib/verdict-store";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +13,11 @@ const MINT = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 // Anchors a verdict on Solana. The score written is always one this server computed.
 export async function POST(request: Request) {
   if (rateLimited(`attest:${clientIp(request)}`, 5, 60_000)) return Response.json({ error: "Too many receipts — wait a minute." }, { status: 429 });
-  const body = (await request.json().catch(() => ({}))) as { mint?: string; evidenceHash?: string };
+  const body = (await request.json().catch(() => ({}))) as {
+    mint?: string;
+    evidenceHash?: string;
+    sealed?: { score: number; band: Band; confidence: number; issuedAt: number; seal: string };
+  };
   const mint = String(body.mint ?? "");
   const hash = String(body.evidenceHash ?? "");
   if (!MINT.test(mint) || !/^[0-9a-f]{64}$/.test(hash)) return Response.json({ error: "Missing mint or evidence hash." }, { status: 400 });
@@ -20,10 +26,15 @@ export async function POST(request: Request) {
   if (existing) return Response.json({ ...existing, evidenceHash: hash, reused: true });
 
   let verdict = recallVerdict(hash);
+  // A valid seal proves this server computed exactly these values, even on another instance.
+  const s = body.sealed;
+  if (!verdict && s && checkSeal({ mint, score: Number(s.score), band: s.band, confidence: Number(s.confidence), hash, issuedAt: Number(s.issuedAt) }, String(s.seal))) {
+    verdict = { mint, score: Number(s.score), band: s.band, confidence: Number(s.confidence), hash, at: Number(s.issuedAt) };
+  }
   let note: string | undefined;
   if (!verdict || verdict.mint !== mint) {
     // Not computed by this instance: recompute from live data rather than trust the client.
-    const found = await resolveToken(mint);
+    const found = await resolveToken(mint).catch(() => ({ id: mint }));
     if (!found) return Response.json({ error: "Token not found." }, { status: 404 });
     const d = await buildDossier(found);
     if (d.mode === "UNAVAILABLE") return Response.json({ error: "Data sources unavailable; cannot recompute the verdict to anchor." }, { status: 502 });

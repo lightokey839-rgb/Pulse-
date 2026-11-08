@@ -10,10 +10,19 @@ export const LADDER_SIZES = [100, 1000, 10000] as const;
 // Above this, the "dev" wallet is almost certainly a launchpad's own deployer, not an individual.
 const PLATFORM_SIGNER_LAUNCHES = 20_000;
 
+export class SearchUnavailable extends Error {}
+
 export async function resolveToken(query: string): Promise<JupToken | { id: string } | null> {
   const q = query.trim();
   if (!q) return null;
-  const { value } = await searchTokens(q).catch(() => ({ value: [] as JupToken[] }));
+  let value: JupToken[];
+  try {
+    value = (await searchTokens(q)).value;
+  } catch (e) {
+    // A mint can still be investigated from chain data alone; a symbol cannot be resolved without search.
+    if (BASE58.test(q)) return { id: q };
+    throw new SearchUnavailable((e as Error).message);
+  }
   if (BASE58.test(q)) return value.find((t) => t.id === q) ?? { id: q };
   const norm = (s: string) => s.replace(/^\$/, "").toLowerCase();
   const target = norm(q);
