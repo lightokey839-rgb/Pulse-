@@ -12,6 +12,8 @@
 Pulse catches Solana memecoins minutes after launch and builds an evidence-first dossier for any token: mint and freeze authority and Token-2022 extensions read directly from Solana, live Jupiter sell quotes at $100 / $1k / $10k (the Exit Ladder), and the creator's launch history. A deterministic 10-factor score with critical flags gives the verdict; an AI writes the brief but can only cite that evidence. Every verdict can be anchored on Solana as a Memo receipt, and anyone can verify it on the Ledger page by recomputing the evidence hash.
 
 ## Why
+In the two days before this hackathon I lost a little over $25 on Solana memecoins I found on pump.fun and DEX screeners. I was in profit and couldn't sell for what the chart showed until it became a loss; I aped fresh launches without knowing who held the supply; and I bought a copycat ticker. Every answer was already on Solana — it just took too long to find. Pulse puts it on one screen in seconds, starting with the number I never had: what a sell would actually return.
+
 Most new memecoins come from repeat deployers — in our feed, roughly 4 in 10 recent launches came from creators with 50+ prior tokens. During testing, Pulse caught a token that collapsed from about $3K to $61 in minutes: no sell route, creator with 2,469 launches. Free scanners give a score; Pulse gives evidence, a measured exit, and a verdict that can't be quietly rewritten.
 
 ## How we built it
