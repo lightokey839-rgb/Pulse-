@@ -3,4 +3,7 @@ node_modules/
 .npm-cache/
 .env.local
 .vercel/
+.gh-config/
+.gitconfig.local
 *.log
+tsconfig.tsbuildinfo
