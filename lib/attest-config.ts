@@ -55,8 +55,21 @@ export function attestorAddress(): string | null {
   return s ? base58(s.slice(32)) : null;
 }
 
-export async function attestRpc<T>(method: string, params: unknown[]): Promise<T> {
-  const res = await fetch(attestRpcUrl(), {
+// Receipt history needs the `memo` field from getSignaturesForAddress, which some keyed providers
+// don't return. Read history from Solana's own public endpoint first, then fall back to the keyed one.
+const PUBLIC_RPC: Record<Cluster, string> = { devnet: "https://api.devnet.solana.com", "mainnet-beta": "https://api.mainnet-beta.solana.com" };
+
+export async function receiptHistory<T>(address: string): Promise<T> {
+  const params = [address, { limit: 100, commitment: "confirmed" }];
+  try {
+    return await attestRpc<T>("getSignaturesForAddress", params, process.env.ATTEST_HISTORY_RPC_URL || PUBLIC_RPC[attestCluster()]);
+  } catch {
+    return attestRpc<T>("getSignaturesForAddress", params);
+  }
+}
+
+export async function attestRpc<T>(method: string, params: unknown[], url = attestRpcUrl()): Promise<T> {
+  const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),

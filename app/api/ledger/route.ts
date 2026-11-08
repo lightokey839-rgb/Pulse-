@@ -1,4 +1,4 @@
-import { attestCluster, attestorAddress, attestorBalanceLamports, attestRpc, explorerAddress, explorerTx } from "@/lib/attest-config";
+import { attestCluster, attestorAddress, attestorBalanceLamports, explorerAddress, explorerTx, receiptHistory } from "@/lib/attest-config";
 import { cached, clientIp, rateLimited } from "@/lib/cache";
 import { parseReceiptMemo } from "@/lib/receipt";
 
@@ -14,7 +14,7 @@ export async function GET(request: Request) {
   if (!address) return Response.json({ cluster, configured: false, receipts: [] });
   const mint = new URL(request.url).searchParams.get("mint");
   try {
-    const { value: sigs } = await cached(`ledger:${cluster}:${address}`, 8_000, () => attestRpc<SigInfo[]>("getSignaturesForAddress", [address, { limit: 100, commitment: "confirmed" }]));
+    const { value: sigs } = await cached(`ledger:${cluster}:${address}`, 8_000, () => receiptHistory<SigInfo[]>(address));
     const receipts = sigs
       .filter((s) => !s.err)
       .map((s) => {

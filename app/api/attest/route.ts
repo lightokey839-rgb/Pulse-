@@ -1,5 +1,5 @@
 import { AttestError, writeReceipt } from "@/lib/attest";
-import { attestCluster, attestorAddress, attestRpc, explorerTx } from "@/lib/attest-config";
+import { attestCluster, attestorAddress, explorerTx, receiptHistory } from "@/lib/attest-config";
 import { cached, clientIp, rateLimited } from "@/lib/cache";
 import { parseReceiptMemo } from "@/lib/receipt";
 import { buildDossier, resolveToken } from "@/lib/dossier";
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
     const address = attestorAddress();
     if (address) {
       const { value: sigs } = await cached(`ledger:${attestCluster()}:${address}`, 8_000, () =>
-        attestRpc<{ signature: string; err: unknown; memo: string | null }[]>("getSignaturesForAddress", [address, { limit: 100, commitment: "confirmed" }]),
+        receiptHistory<{ signature: string; err: unknown; memo: string | null }[]>(address),
       );
       const hit = sigs.find((s) => {
         const p = !s.err ? parseReceiptMemo(s.memo) : null;
