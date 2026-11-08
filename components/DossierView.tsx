@@ -3,10 +3,10 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { bandTone, clock, short } from "@/lib/format";
 import type { AiBrief, Dossier } from "@/lib/types";
+import { BriefPanel, memoFromLedger, ReceiptCard, receiptError, STEP_DEFS, StepList, stepsFromDossier, useMock, type ReceiptUi, type Step } from "./DossierParts";
 import { useWatchlist } from "./useWatchlist";
 
-type ReceiptResult = { signature: string; memo: string; explorerUrl: string; cluster: string; status: string; evidenceHash: string; reused?: boolean; note?: string };
-export type LedgerReceipt = { mint: string; score: number; band: string; confidence: number; hash16: string; time: number; signature: string; explorerUrl: string; cluster: string };
+export type LedgerReceipt = { mint: string; score: number; band: string; confidence: number; hash16: string; time: number; signature: string; explorerUrl: string; cluster: string; subject?: string; method?: string };
 
 const TIPS: Record<string, string> = {
   "Mint authority": "If active, someone can create new tokens at any time and dilute holders.",
@@ -21,14 +21,6 @@ const TIPS: Record<string, string> = {
   "Creator holding": "Share of supply still held by the creator wallet.",
 };
 
-const STEPS = [
-  ["Token metadata", "Jupiter · tokens/v2"],
-  ["Mint authorities & extensions", "RPC · getAccountInfo"],
-  ["Holder owners resolved", "RPC · getTokenLargestAccounts"],
-  ["Exit routes measured", "Jupiter · swap/v2/order ×3"],
-  ["Creator history", "Jupiter · audit"],
-];
-
 export default function DossierView({ query }: { query: string }) {
   const [dossier, setDossier] = useState<Dossier | null>(null);
   const [error, setError] = useState("");
@@ -38,17 +30,22 @@ export default function DossierView({ query }: { query: string }) {
   const [copied, setCopied] = useState(false);
   const requestId = useRef(0);
   const { has, toggle, update } = useWatchlist();
-  const [receipt, setReceipt] = useState<ReceiptResult | null>(null);
-  const [anchoring, setAnchoring] = useState(false);
-  const [anchorError, setAnchorError] = useState("");
+  const [receiptUi, setReceiptUi] = useState<ReceiptUi>({ kind: "idle" });
   const [history, setHistory] = useState<LedgerReceipt[]>([]);
   const [receiptCluster, setReceiptCluster] = useState("devnet");
+  const [reloadKey, setReloadKey] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
+  const mock = useMock();
 
-  async function loadHistory(mint: string) {
+  async function loadHistory(mint: string, hash?: string) {
     try {
       const b = await fetch(`/api/ledger?mint=${mint}`).then((r) => r.json());
       if (b.cluster) setReceiptCluster(b.cluster);
-      setHistory(b.receipts ?? []);
+      const list: LedgerReceipt[] = b.receipts ?? [];
+      setHistory(list);
+      // This exact evidence is already on chain: show that instead of offering a duplicate write.
+      const same = hash ? list.find((h) => h.hash16 === hash.slice(0, 16)) : undefined;
+      if (same) setReceiptUi((u) => (u.kind === "idle" ? { kind: "existing", r: { signature: same.signature, memo: memoFromLedger(same), explorerUrl: same.explorerUrl, cluster: same.cluster, status: "confirmed", evidenceHash: hash!, reused: true } } : u));
     } catch {
       setHistory([]);
     }
@@ -56,17 +53,19 @@ export default function DossierView({ query }: { query: string }) {
 
   async function anchor() {
     if (!dossier) return;
-    setAnchoring(true);
-    setAnchorError("");
+    setReceiptUi({ kind: "anchoring" });
     try {
       const res = await fetch("/api/attest", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
           mint: dossier.mint,
           evidenceHash: dossier.evidenceHash,
           sealed: dossier.seal ? { score: dossier.verdict.score, band: dossier.verdict.band, confidence: dossier.verdict.confidence, issuedAt: dossier.seal.issuedAt, seal: dossier.seal.value } : undefined,
         }) });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.error ?? "Receipt unavailable");
-      setReceipt(body);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setReceiptUi(receiptError(res.status, String(body.error ?? ""), receiptCluster));
+        return;
+      }
+      setReceiptUi(body.reused ? { kind: "existing", r: body } : { kind: "success", r: body });
       if (body.cluster) setReceiptCluster(body.cluster);
       // Keep the evidence bundle locally so the Ledger page can verify this receipt.
       if (body.evidenceHash === dossier.evidenceHash) {
@@ -77,21 +76,43 @@ export default function DossierView({ query }: { query: string }) {
         }
       }
       setTimeout(() => void loadHistory(dossier.mint), 2500);
-    } catch (e) {
-      setAnchorError((e as Error).message);
-    } finally {
-      setAnchoring(false);
+    } catch {
+      setReceiptUi(receiptError(0, "", receiptCluster));
     }
   }
+
+  // Elapsed-seconds counter while the dossier loads.
+  useEffect(() => {
+    if (dossier || error) return;
+    setElapsed(0);
+    const start = Date.now();
+    const t = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 500);
+    return () => clearInterval(t);
+  }, [dossier, error, reloadKey]);
+
+  // Dev-only: force receipt states with ?mock=receipt-anchoring|receipt-success|receipt-existing|receipt-unfunded|receipt-rate|receipt-rpc
+  useEffect(() => {
+    if (!mock.startsWith("receipt-") || !dossier) return;
+    const r = { signature: "5GERmockSignature1111111111111111111111111111111111111111111zvKe", memo: `pulse/1 c=devnet n=mainnet v=pulse-risk/2 m=${dossier.mint} s=${dossier.verdict.score} b=L k=${dossier.verdict.confidence.toFixed(2)} h=${dossier.evidenceHash.slice(0, 16)} t=${Math.floor(Date.now() / 1000)}`, explorerUrl: "https://explorer.solana.com/tx/5GERmock?cluster=devnet", cluster: "devnet", status: "confirmed", evidenceHash: dossier.evidenceHash };
+    const map: Record<string, ReceiptUi> = {
+      "receipt-anchoring": { kind: "anchoring" },
+      "receipt-success": { kind: "success", r },
+      "receipt-existing": { kind: "existing", r: { ...r, reused: true } },
+      "receipt-unfunded": receiptError(503, "Receipt unavailable: the attestor wallet needs devnet SOL."),
+      "receipt-rate": receiptError(429, "Too many receipts"),
+      "receipt-rpc": receiptError(502, "Receipt unavailable: the transaction could not be sent."),
+    };
+    if (map[mock]) setReceiptUi(map[mock]);
+  }, [mock, dossier]);
 
   useEffect(() => {
     const id = ++requestId.current;
     setDossier(null);
     setBrief(null);
     setError("");
-    setReceipt(null);
-    setAnchorError("");
+    setReceiptUi({ kind: "idle" });
     setHistory([]);
+    if (mock === "steps-running" || mock === "steps-slow") return; // dev-only: stay in the loading state
     (async () => {
       try {
         const res = await fetch("/api/dossier", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query }) });
@@ -104,7 +125,7 @@ export default function DossierView({ query }: { query: string }) {
         // Keep the URL shareable: a symbol search lands on the canonical mint URL.
         if (query !== d.mint) window.history.replaceState(null, "", `/token/${d.mint}`);
         update(d.mint, { score: d.verdict.score, band: d.verdict.band });
-        void loadHistory(d.mint);
+        void loadHistory(d.mint, d.evidenceHash);
         setBriefLoading(true);
         const b = await fetch("/api/brief", {
           method: "POST",
@@ -119,7 +140,9 @@ export default function DossierView({ query }: { query: string }) {
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query]);
+  }, [query, reloadKey, mock]);
+
+  const retry = () => setReloadKey((k) => k + 1);
 
   function cite(id: string) {
     setHighlight(id);
@@ -152,27 +175,35 @@ export default function DossierView({ query }: { query: string }) {
     return (
       <div className="page">
         <Link href="/" className="crumb">← Radar</Link>
-        <div className="notice">{error}</div>
-        <p className="muted">Try pasting the full mint address, or pick a token from the radar.</p>
+        <div className="panel state-panel" role="alert">
+          <h3>{/busy|rate/i.test(error) ? "Data sources are busy" : /not found|No Solana token/i.test(error) ? "No token found" : "Couldn't build this dossier"}</h3>
+          <p>{error}</p>
+          <div className="state-actions">
+            <button className="primary-button" onClick={retry}>RETRY</button>
+            <Link className="secondary-button" href="/">BACK TO RADAR</Link>
+          </div>
+        </div>
       </div>
     );
 
-  if (!dossier)
+  if (!dossier) {
+    const slow = elapsed >= 12 || mock === "steps-slow";
+    const running: Step[] = STEP_DEFS.map(([name, source]) => ({ name, source, state: "running" }));
     return (
       <div className="page">
         <Link href="/" className="crumb">← Radar</Link>
         <div className="panel">
           <div className="section-kicker">INVESTIGATING {short(query)}</div>
-          {STEPS.map(([s, src], i) => (
-            <div className="trace" key={s} style={{ animationDelay: `${i * 0.7}s` }}>
-              <span className="trace-mark pending">…</span>
-              <div><strong>{s}</strong><span className="trace-meta">{src}</span></div>
-            </div>
-          ))}
-          <p className="fineprint">Live quotes are rate-limited, so the full dossier takes a few seconds.</p>
+          <StepList steps={running} elapsed={mock === "steps-slow" ? 14 : elapsed} slow={slow} onRetry={retry} />
+          {!slow && <p className="fineprint">Live quotes are rate-limited, so a full dossier usually takes 5–15 seconds.</p>}
         </div>
       </div>
     );
+  }
+
+  let steps = stepsFromDossier(dossier);
+  if (mock === "steps-failed") steps = steps.map((s, i) => (i === 3 ? { ...s, state: "failed", reason: "Jupiter didn't return quotes (likely rate-limited)." } : s));
+  if (mock === "steps-fallback") steps = steps.map((s, i) => (i === 2 ? { ...s, state: "fallback", reason: "Using Jupiter's holder figure; owners not resolved (needs a keyed RPC)." } : s));
 
   const v = dossier.verdict;
   const watching = has(dossier.mint);
@@ -221,35 +252,14 @@ export default function DossierView({ query }: { query: string }) {
         <p className="fineprint verdict-disclaimer">A lower score means fewer warning signs were found, not that a token is protected from loss. Not financial advice.</p>
       </div>
 
+      <article className="panel steps-panel">
+        <div className="section-kicker">HOW THIS VERDICT WAS BUILT</div>
+        <StepList steps={steps} onRetry={retry} />
+        {dossier.mode === "CACHED" && <p className="fineprint">Served from a cache built within the last minute (CACHED). Retry after a minute for a fresh read.</p>}
+      </article>
+
       <div className="two-col">
-        <article className="panel">
-          <div className="panel-head">
-            <div>
-              <div className="section-kicker">AI BRIEF</div>
-              <h3>{brief ? brief.label : briefLoading ? "Analysing evidence…" : "Brief unavailable"}</h3>
-            </div>
-            {brief && <span className="chip">{brief.label === "Rule-based explanation" ? "NO LLM" : "CLAIMS CHECKED"}</span>}
-          </div>
-          {briefLoading && !brief && <div className="skeleton-text"><span /><span /><span /></div>}
-          {brief && (
-            <>
-              <p className="summary">{brief.summary}</p>
-              {brief.findings.map((f) => (
-                <div className="finding" key={f.headline + f.evidenceIds.join()}>
-                  <span className={`severity ${f.severity}`} />
-                  <div>
-                    <strong>{f.headline}</strong>
-                    <p>{f.explanation.replace(/\s*\[E\d+\]/g, "")}</p>
-                    <div className="citations">{f.evidenceIds.map((id) => <button key={id} onClick={() => cite(id)}>[{id}]</button>)}</div>
-                  </div>
-                </div>
-              ))}
-              {brief.removedClaims > 0 && <p className="fineprint warn-text">{brief.removedClaims} unverifiable claim{brief.removedClaims > 1 ? "s" : ""} removed by the verifier.</p>}
-              {brief.note && <p className="fineprint">{brief.note}</p>}
-              <p className="beginner"><span className="label">FOR NEW TRADERS</span>{brief.beginnerNote}</p>
-            </>
-          )}
-        </article>
+        <BriefPanel brief={mock === "brief-loading" ? null : mock === "brief-ai" && brief ? { ...brief, label: "AI analyst (verified)", model: "claude-haiku-5-5", removedClaims: 1, note: undefined } : brief} loading={briefLoading || mock === "brief-loading"} dossier={dossier} onCite={cite} />
 
         <article className="panel">
           <div className="panel-head">
@@ -317,35 +327,15 @@ export default function DossierView({ query }: { query: string }) {
             </div>
           ))}
         </div>
-        <div className="trace-strip">
-          {dossier.trace.map((t) => <span key={t.step} className={t.status === "ok" ? "" : "bad"}>{t.status === "ok" ? "✓" : "✕"} {t.step} · {t.ms}ms</span>)}
-        </div>
         <div className="hash-row">
           <span title="SHA-256 of the canonical evidence (values, not timestamps). Same chain state → same hash.">SHA-256 EVIDENCE HASH</span>
           <code>{dossier.evidenceHash}</code>
         </div>
       </article>
 
-      <article className="panel receipt-panel" id="receipt">
-        <div className="panel-head">
-          <div>
-            <div className="section-kicker">ON-CHAIN RECEIPT <span className="chip">SOLANA {receiptCluster.toUpperCase()}</span></div>
-            <h3>Anchor this verdict on Solana</h3>
-            <p className="muted small">Writes a Memo transaction with the score, band, confidence and the first 16 hex of the evidence hash. Anyone can read it back and check the evidence. A receipt proves what Pulse said and when, not that it was right.</p>
-          </div>
-          <button className="primary-button anchor-btn" onClick={anchor} disabled={anchoring || Boolean(receipt)}>
-            {anchoring ? "WRITING TO SOLANA…" : receipt ? "✓ ANCHORED" : "ANCHOR ON SOLANA ↗"}
-          </button>
-        </div>
-        {anchorError && <div className="notice inline-notice">{anchorError}</div>}
-        {receipt && (
-          <div className="receipt-box">
-            <div><span className="label">TRANSACTION</span><a href={receipt.explorerUrl} target="_blank" rel="noopener noreferrer" className="mono inline-link">{short(receipt.signature)} ↗</a> <span className={`chip ${receipt.status === "confirmed" ? "" : "demo"}`}>{receipt.status.toUpperCase()}</span>{receipt.reused && <span className="muted small"> already anchored for this evidence</span>}</div>
-            <div><span className="label">MEMO ON CHAIN</span><code className="memo">{receipt.memo}</code></div>
-            {receipt.note && <p className="fineprint warn-text">{receipt.note}</p>}
-            <p className="fineprint">The evidence bundle was saved in this browser so the <Link href="/ledger" className="inline-link">Ledger</Link> can verify it. You can also download it above.</p>
-          </div>
-        )}
+      <ReceiptCard ui={receiptUi} cluster={receiptCluster} onAnchor={anchor} />
+      <article className="panel history-panel">
+        {history.length === 0 && <p className="small muted">No earlier receipts for this token on Solana {receiptCluster}.</p>}
         {history.length > 0 && (
           <div className="history">
             <span className="label">PREVIOUS RECEIPTS FOR THIS TOKEN (READ FROM CHAIN)</span>
