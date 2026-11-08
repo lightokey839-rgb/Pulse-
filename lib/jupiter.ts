@@ -24,6 +24,7 @@ export type JupToken = {
   createdAt?: string;
   firstPool?: { id: string; createdAt: string };
   stats1h?: { priceChange?: number };
+  stats24h?: { priceChange?: number; buyVolume?: number; sellVolume?: number };
   audit?: {
     mintAuthorityDisabled?: boolean;
     freezeAuthorityDisabled?: boolean;

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import Shell from "@/components/Shell";
 import "./globals.css";
+import "./terminal.css";
 
 export const metadata: Metadata = {
   title: { default: "Pulse — Memecoin Terminal", template: "%s · Pulse" },
