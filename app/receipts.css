@@ -1,0 +1,32 @@
+/* ---- On-chain receipts and ledger ---- */
+.small{font-size:12px;line-height:1.5}
+.receipt-panel{margin-top:16px;border-color:#33452f;background:linear-gradient(120deg,#131c15,#111516 60%)}
+.receipt-panel .panel-head p{max-width:620px;margin:8px 0 0}
+.anchor-btn{min-height:42px;padding:0 18px;flex:none;cursor:pointer}
+.anchor-btn:disabled{opacity:.85;cursor:default}
+.inline-notice{margin:14px 0 0}
+.receipt-box{margin-top:16px;border-top:1px solid var(--line);padding-top:14px;display:flex;flex-direction:column;gap:10px}
+.receipt-box>div{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.receipt-box .label{min-width:110px}
+.memo{font:11px "DM Mono",monospace;color:var(--cyan);word-break:break-all;background:#0d1312;border:1px solid var(--line);border-radius:6px;padding:8px 10px;flex:1}
+.history{margin-top:16px;border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column}
+.history .label{margin-bottom:8px}
+.history-row{display:grid;grid-template-columns:1.2fr 1fr 1fr auto;gap:12px;padding:8px 0;border-bottom:1px solid #1c2424;text-decoration:none;color:var(--text);font-size:12px}
+.history-row:hover{color:var(--accent)}
+.ledger-table .tr{grid-template-columns:1fr 1.1fr 1fr 1.3fr 1fr auto}
+.ledger-item{border-bottom:1px solid var(--line)}
+.ledger-item .tr{border-bottom:0}
+.verify-result{margin:0 16px 12px;padding:10px 12px;border-radius:8px;font-size:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;border:1px solid var(--line)}
+.verify-result.match{border-color:#3f5f2c;background:#162114;color:#d6f5b8}
+.verify-result.mismatch{border-color:#6a3127;background:#2a1612;color:#ffc2b5}
+.verify-result.missing{border-color:#6f5630;background:#261e10;color:#f5d7a6}
+.upload{position:relative;overflow:hidden;cursor:pointer}
+.upload input{position:absolute;inset:0;opacity:0;cursor:pointer}
+@media (max-width:860px){
+  .receipt-panel .panel-head{flex-direction:column}
+  .anchor-btn{width:100%}
+  .history-row{grid-template-columns:1fr auto}
+  .history-row>:nth-child(3),.history-row>:nth-child(1){display:none}
+  .ledger-table .tr{grid-template-columns:1fr auto}
+  .ledger-table .tr>:nth-child(n+3):not(.row-actions){display:none}
+}

@@ -7,3 +7,4 @@ node_modules/
 .gitconfig.local
 *.log
 tsconfig.tsbuildinfo
+.attestor.local.json

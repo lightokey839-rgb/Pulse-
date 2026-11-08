@@ -23,12 +23,16 @@ const GROUPS = [
     ],
   },
   {
+    label: "ON-CHAIN",
+    items: [{ href: "/ledger", label: "Receipts ledger", icon: "⌁", hint: "Verdicts anchored on Solana" }],
+  },
+  {
     label: "LEARN",
     items: [{ href: "/methodology", label: "How it works", icon: "◈", hint: "Score, AI checks, sources" }],
   },
 ];
 
-type Health = { services: { rpc: string; jupiter: string; ai: string } };
+type Health = { services: { rpc: string; jupiter: string; ai: string; attestor?: string } };
 
 export default function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -150,6 +154,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             <span title={health?.services.rpc}><i className={tone(health?.services.rpc)} /> RPC {health ? (/keyed/.test(health.services.rpc) ? "· keyed" : "· public") : ""}</span>
             <span title={health?.services.jupiter}><i className={tone(health?.services.jupiter)} /> Jupiter {health ? (/keyed/.test(health.services.jupiter) ? "· keyed" : "· keyless") : ""}</span>
             <span title={health?.services.ai}><i className={tone(health?.services.ai)} /> AI analyst {health ? (/enabled/.test(health.services.ai) ? "· on" : "· rule-based") : ""}</span>
+            <span title={health?.services.attestor}><i className={!health ? "muted" : /^ready/.test(health.services.attestor ?? "") ? "ok" : "warn"} /> Receipts {health ? (/^ready/.test(health.services.attestor ?? "") ? `· ${health.services.attestor?.split(" ")[2] ?? "on"}` : "· off") : ""}</span>
           </div>
           <p className="side-foot">Pulse never holds funds or executes trades. You sign every move on Jupiter. Not financial advice.</p>
         </aside>

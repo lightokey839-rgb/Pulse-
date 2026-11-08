@@ -5,6 +5,9 @@ import { bandTone, clock, short } from "@/lib/format";
 import type { AiBrief, Dossier } from "@/lib/types";
 import { useWatchlist } from "./useWatchlist";
 
+type ReceiptResult = { signature: string; memo: string; explorerUrl: string; cluster: string; status: string; evidenceHash: string; reused?: boolean; note?: string };
+export type LedgerReceipt = { mint: string; score: number; band: string; confidence: number; hash16: string; time: number; signature: string; explorerUrl: string; cluster: string };
+
 const TIPS: Record<string, string> = {
   "Mint authority": "If active, someone can create new tokens at any time and dilute holders.",
   "Freeze authority": "If active, someone can freeze holders' token accounts so they cannot sell.",
@@ -35,12 +38,56 @@ export default function DossierView({ query }: { query: string }) {
   const [copied, setCopied] = useState(false);
   const requestId = useRef(0);
   const { has, toggle, update } = useWatchlist();
+  const [receipt, setReceipt] = useState<ReceiptResult | null>(null);
+  const [anchoring, setAnchoring] = useState(false);
+  const [anchorError, setAnchorError] = useState("");
+  const [history, setHistory] = useState<LedgerReceipt[]>([]);
+  const [receiptCluster, setReceiptCluster] = useState("devnet");
+
+  async function loadHistory(mint: string) {
+    try {
+      const b = await fetch(`/api/ledger?mint=${mint}`).then((r) => r.json());
+      if (b.cluster) setReceiptCluster(b.cluster);
+      setHistory(b.receipts ?? []);
+    } catch {
+      setHistory([]);
+    }
+  }
+
+  async function anchor() {
+    if (!dossier) return;
+    setAnchoring(true);
+    setAnchorError("");
+    try {
+      const res = await fetch("/api/attest", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mint: dossier.mint, evidenceHash: dossier.evidenceHash }) });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "Receipt unavailable");
+      setReceipt(body);
+      if (body.cluster) setReceiptCluster(body.cluster);
+      // Keep the evidence bundle locally so the Ledger page can verify this receipt.
+      if (body.evidenceHash === dossier.evidenceHash) {
+        try {
+          localStorage.setItem(`pulse.bundle.${dossier.evidenceHash.slice(0, 16)}`, JSON.stringify({ mint: dossier.mint, symbol: dossier.symbol, evidenceHash: dossier.evidenceHash, evidence: dossier.evidence }));
+        } catch {
+          /* storage blocked */
+        }
+      }
+      setTimeout(() => void loadHistory(dossier.mint), 2500);
+    } catch (e) {
+      setAnchorError((e as Error).message);
+    } finally {
+      setAnchoring(false);
+    }
+  }
 
   useEffect(() => {
     const id = ++requestId.current;
     setDossier(null);
     setBrief(null);
     setError("");
+    setReceipt(null);
+    setAnchorError("");
+    setHistory([]);
     (async () => {
       try {
         const res = await fetch("/api/dossier", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query }) });
@@ -53,6 +100,7 @@ export default function DossierView({ query }: { query: string }) {
         // Keep the URL shareable: a symbol search lands on the canonical mint URL.
         if (query !== d.mint) window.history.replaceState(null, "", `/token/${d.mint}`);
         update(d.mint, { score: d.verdict.score, band: d.verdict.band });
+        void loadHistory(d.mint);
         setBriefLoading(true);
         const b = await fetch("/api/brief", {
           method: "POST",
@@ -272,6 +320,41 @@ export default function DossierView({ query }: { query: string }) {
           <span title="SHA-256 of the canonical evidence (values, not timestamps). Same chain state → same hash.">SHA-256 EVIDENCE HASH</span>
           <code>{dossier.evidenceHash}</code>
         </div>
+      </article>
+
+      <article className="panel receipt-panel" id="receipt">
+        <div className="panel-head">
+          <div>
+            <div className="section-kicker">ON-CHAIN RECEIPT <span className="chip">SOLANA {receiptCluster.toUpperCase()}</span></div>
+            <h3>Anchor this verdict on Solana</h3>
+            <p className="muted small">Writes a Memo transaction with the score, band, confidence and the first 16 hex of the evidence hash. Anyone can read it back and check the evidence. A receipt proves what Pulse said and when, not that it was right.</p>
+          </div>
+          <button className="primary-button anchor-btn" onClick={anchor} disabled={anchoring || Boolean(receipt)}>
+            {anchoring ? "WRITING TO SOLANA…" : receipt ? "✓ ANCHORED" : "ANCHOR ON SOLANA ↗"}
+          </button>
+        </div>
+        {anchorError && <div className="notice inline-notice">{anchorError}</div>}
+        {receipt && (
+          <div className="receipt-box">
+            <div><span className="label">TRANSACTION</span><a href={receipt.explorerUrl} target="_blank" rel="noopener noreferrer" className="mono inline-link">{short(receipt.signature)} ↗</a> <span className={`chip ${receipt.status === "confirmed" ? "" : "demo"}`}>{receipt.status.toUpperCase()}</span>{receipt.reused && <span className="muted small"> already anchored for this evidence</span>}</div>
+            <div><span className="label">MEMO ON CHAIN</span><code className="memo">{receipt.memo}</code></div>
+            {receipt.note && <p className="fineprint warn-text">{receipt.note}</p>}
+            <p className="fineprint">The evidence bundle was saved in this browser so the <Link href="/ledger" className="inline-link">Ledger</Link> can verify it. You can also download it above.</p>
+          </div>
+        )}
+        {history.length > 0 && (
+          <div className="history">
+            <span className="label">PREVIOUS RECEIPTS FOR THIS TOKEN (READ FROM CHAIN)</span>
+            {history.slice(0, 5).map((h) => (
+              <a key={h.signature} href={h.explorerUrl} target="_blank" rel="noopener noreferrer" className="history-row">
+                <span className="mono">{new Date(h.time * 1000).toLocaleString()}</span>
+                <span className={bandTone(h.band)}>{h.score}/100 · {h.band}</span>
+                <span className="mono muted">h={h.hash16}</span>
+                <span className="mono">{short(h.signature)} ↗</span>
+              </a>
+            ))}
+          </div>
+        )}
       </article>
     </div>
   );

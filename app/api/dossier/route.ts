@@ -1,5 +1,6 @@
 import { buildDossier, resolveToken } from "@/lib/dossier";
 import { clientIp, rateLimited } from "@/lib/cache";
+import { rememberVerdict } from "@/lib/verdict-store";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -13,5 +14,7 @@ export async function POST(request: Request) {
   if (!found) return Response.json({ error: `No Solana token found for “${query}”.` }, { status: 404 });
   const dossier = await buildDossier(found);
   if (dossier.mode === "UNAVAILABLE") return Response.json({ error: "That address is not a token mint, or data sources are unreachable right now.", dossier }, { status: 502 });
+  const v = dossier.verdict;
+  rememberVerdict({ mint: dossier.mint, score: v.score, band: v.band, confidence: v.confidence, hash: dossier.evidenceHash });
   return Response.json(dossier);
 }
